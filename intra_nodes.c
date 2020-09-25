@@ -5,12 +5,6 @@
 
 #include <mpi.h>
 
-static int rank;
-static int process_count;
-
-static void initial_data(unsigned char* buffer, int dataSize);
-
-
 int main(int argc, char **argv)
 {
     // Exit program if there are no required arguments
@@ -26,6 +20,9 @@ int main(int argc, char **argv)
     
     unsigned char* buffer = malloc(dataSize);
     
+    int rank = 0;
+    int process_count = 0;
+    
     // MPI Initial
     if (MPI_Init(&argc, &argv) != MPI_SUCCESS)
         printf("ERROR: MPI_Init error\n");
@@ -35,7 +32,9 @@ int main(int argc, char **argv)
         printf("ERROR: MPI_Comm_rank error\n");
     
     // initial buffer with rank id (e.g., rank 0: 00000..)
-    initial_data(buffer, dataSize);
+    int data_num = dataSize/sizeof(int);
+    for (int i = 0; i < data_num; i++)
+        memcpy(&buffer[i*sizeof(int)], &rank, sizeof(int));
     
     // decide aggregators
     int is_aggregator = (rank % ncores_per_node == 0)? 1: 0;
@@ -129,7 +128,9 @@ int main(int argc, char **argv)
     MPI_Reduce(&communication_time, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     
     if (rank == 0)
+    {
         printf("The current mode is %d.\nThe transfered data is %d.\nThe communication time is %f.\n", mode, dataSize, max_time);
+    }
 //    if (is_aggregator == 1)
 //    {
 //        int size = dataSize * ncores_per_node / sizeof(int);
@@ -143,12 +144,5 @@ int main(int argc, char **argv)
     
     free(buffer);
     free(recv_buffer);
-}
-
-static void initial_data(unsigned char* buffer, int dataSize)
-{
-    int data_num = dataSize/sizeof(int);
-    for (int i = 0; i < data_num; i++)
-        memcpy(&buffer[i*sizeof(int)], &rank, sizeof(int));
 }
 
