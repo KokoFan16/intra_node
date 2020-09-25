@@ -43,7 +43,7 @@ int main(int argc, char **argv)
     if (is_aggregator == 1)
         recv_buffer = malloc(dataSize * ncores_per_node);
     
-    int node_num = process_count / ncores_per_node;
+    int node_num = process_count / ncores_per_node;  // the number of nodes
     if (process_count % ncores_per_node > 0)
         node_num += 1;
     
@@ -54,60 +54,60 @@ int main(int argc, char **argv)
     int req_num = 0;
     if (mode == 0)  // This case aggregation will not cross node boundary
     {
+        // Received data from others
+        if (is_aggregator == 1) // rank 0 64 128 192
+        {
+            for (int i = 0; i < ncores_per_node; i++)
+            {
+                int recv_rank = i + rank; // 0  i(0-63)
+                MPI_Irecv(&recv_buffer[i * dataSize], dataSize, MPI_UNSIGNED_CHAR, recv_rank, recv_rank, MPI_COMM_WORLD, &req[req_num]);
+                req_num++;
+            }
+        }
+        
         // Send data to aggregators
         int send_rank = node_id * ncores_per_node;
         MPI_Isend(buffer, dataSize, MPI_UNSIGNED_CHAR, send_rank, rank,
                   MPI_COMM_WORLD, &req[req_num]);
         req_num++;
-        
-        // Received data from others
-        if (is_aggregator == 1)
-        {
-            for (int i = 0; i < ncores_per_node; i++)
-            {
-                int recv_rank = i + rank;
-                MPI_Irecv(&recv_buffer[i * dataSize], dataSize, MPI_UNSIGNED_CHAR, recv_rank, recv_rank, MPI_COMM_WORLD, &req[req_num]);
-                req_num++;
-            }
-        }
     }
     else if (mode == 1) // This case aggregation will cross node boundary
     {
-        int send_node = ((node_id + 1) < node_num)? (node_id + 1): 0;
-        int send_rank =  send_node * ncores_per_node;
-        
-        MPI_Isend(buffer, dataSize, MPI_UNSIGNED_CHAR, send_rank, rank,
-                  MPI_COMM_WORLD, &req[req_num]);
-        req_num++;
-        
         // Received data from others
         if (is_aggregator == 1)
         {
-            int agg_id = rank / ncores_per_node;
-            int recv_node = ((agg_id - 1) > -1)? (agg_id - 1): (node_num - 1);
+            // the data is received by the previous node, e.g., (1:64-127)->0
+            int recv_node = ((node_id - 1) > -1)? (node_id - 1): (node_num - 1);
             for (int i = 0; i < ncores_per_node; i++)
             {
+                // the aggregator received data from which ranks, e.g., (64)<-(i:0-63 + 0*64)
                 int recv_rank = i + recv_node * ncores_per_node;
                 MPI_Irecv(&recv_buffer[i * dataSize], dataSize, MPI_UNSIGNED_CHAR, recv_rank, recv_rank, MPI_COMM_WORLD, &req[req_num]);
                 req_num++;
             }
         }
-    }
-    else if (mode == 2) // Round Robin
-    {
-        int node_div = ncores_per_node / node_num;
-        int send_rank = (rank - node_id * ncores_per_node) / node_div * ncores_per_node;
+        
+        // Send data to aggregators
+        int send_node = ((node_id + 1) < node_num)? (node_id + 1): 0;// which node to send, e.g., (0:0-63)->1
+        int send_rank =  send_node * ncores_per_node; // send to which aggregator, e.g., (0:0-63)->64
         MPI_Isend(buffer, dataSize, MPI_UNSIGNED_CHAR, send_rank, rank,
                   MPI_COMM_WORLD, &req[req_num]);
         req_num++;
+    }
+    else if (mode == 2) // Round Robin
+    {
+        // group size: divided the processes on a node into N group (N: the number of nodes), e.g., 64/4 = 16
+        int node_div = ncores_per_node / node_num;
         
+        // Received data from others
         if (is_aggregator == 1)
         {
-            int relative_id = node_id * node_div;
+            int relative_id = node_id * node_div;  // (0:0, 1:16, 2:32, 3:64)
             for (int i = 0; i < node_num; i++)
             {
                 for (int j = 0; j < node_div; j++)
                 {
+                    // node 1 (64): (i:0-3)*64+16+(0:15)->((16:31),(80:95),(144:159),(208:223))
                     int recv_rank = i * ncores_per_node + relative_id + j;
                     int index = (i * node_div + j);
                     MPI_Irecv(&recv_buffer[index * dataSize], dataSize, MPI_UNSIGNED_CHAR, recv_rank, recv_rank, MPI_COMM_WORLD, &req[req_num]);
@@ -115,6 +115,12 @@ int main(int argc, char **argv)
                 }
             }
         }
+        
+        // Send data to aggregators
+        int send_rank = (rank - node_id * ncores_per_node) / node_div * ncores_per_node;
+        MPI_Isend(buffer, dataSize, MPI_UNSIGNED_CHAR, send_rank, rank,
+                  MPI_COMM_WORLD, &req[req_num]);
+        req_num++;
     }
     else
     {
