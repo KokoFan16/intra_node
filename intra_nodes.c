@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 #include <mpi.h>
 
@@ -45,7 +44,9 @@ int main(int argc, char **argv)
     if (is_aggregator == 1)
         recv_buffer = malloc(dataSize * ncores_per_node);
     
-    int node_num = ceil((float)process_count/ncores_per_node);
+    int node_num = process_count / ncores_per_node;
+    if (process_count % ncores_per_node > 0)
+        node_num += 1;
     
     double communication_start = MPI_Wtime();
     // MPI request and status
