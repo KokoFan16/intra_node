@@ -17,8 +17,6 @@ int main(int argc, char **argv)
     int dataSize = atoi(argv[2]);
     int mode = atoi(argv[3]);
     
-    unsigned char* buffer = malloc(dataSize);
-    
     int rank = 0;
     int process_count = 0;
     
@@ -31,6 +29,7 @@ int main(int argc, char **argv)
         printf("ERROR: MPI_Comm_rank error\n");
     
     // initial buffer with rank id (e.g., rank 0: 00000..)
+    unsigned char* buffer = malloc(dataSize);
     int data_num = dataSize/sizeof(int);
     for (int i = 0; i < data_num; i++)
         memcpy(&buffer[i*sizeof(int)], &rank, sizeof(int));
@@ -145,5 +144,7 @@ int main(int argc, char **argv)
     
     free(buffer);
     free(recv_buffer);
+    MPI_Finalize();
+    return 0;
 }
 
